@@ -1,0 +1,10 @@
+{
+  "name": "Estoque de Bebidas - Global",
+  "description": "Sistema completo para controle de estoque de distribuidora de bebidas com foco em evitar perdas físicas e de validade, identificação visual por foto e leitor de código de barras.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

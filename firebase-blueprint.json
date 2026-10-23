@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account profile and authorization status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "nome": { "type": "string", "maxLength": 100, "description": "Full name" },
+        "email": { "type": "string", "format": "email", "maxLength": 120, "description": "User email address" },
+        "status": {
+          "type": "string",
+          "enum": ["pendente", "aprovado", "rejeitado", "desativado"],
+          "description": "Approval status"
+        },
+        "perfil": {
+          "type": "string",
+          "enum": ["admin", "gerente", "estoquista", "consulta", ""],
+          "description": "Role profile"
+        },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Update timestamp" },
+        "approvedBy": { "type": "string", "description": "UID of admin who approved" },
+        "approvedByName": { "type": "string", "description": "Name of admin who approved" },
+        "approvedAt": { "type": "string", "description": "Approval timestamp" },
+        "rejectionReason": { "type": "string", "maxLength": 500, "description": "Reason if rejected" }
+      },
+      "required": ["uid", "nome", "email", "status", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Beverage inventory product",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 150 },
+        "brand": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 50 },
+        "volume": { "type": "string", "maxLength": 50 },
+        "barcode": { "type": "string", "maxLength": 50 },
+        "costPrice": { "type": "number" },
+        "salePrice": { "type": "number" },
+        "minStock": { "type": "number" },
+        "photoUrl": { "type": "string", "maxLength": 1000 },
+        "location": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "category", "barcode", "costPrice", "salePrice", "minStock"]
+    },
+    "Batch": {
+      "title": "Batch",
+      "description": "Product batch with expiration date for FEFO control",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "batchNumber": { "type": "string", "maxLength": 50 },
+        "expirationDate": { "type": "string", "format": "date" },
+        "quantity": { "type": "number" },
+        "unitCost": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["productId", "batchNumber", "expirationDate", "quantity"]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Audit record of stock entry, exit or physical loss",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["entrada", "saida", "perda", "ajuste", "transferencia"] },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "batchNumber": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unitPrice": { "type": "number" },
+        "totalValue": { "type": "number" },
+        "lossReason": { "type": "string" },
+        "reasonDetails": { "type": "string", "maxLength": 500 },
+        "documentNumber": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["aprovado", "pendente_aprovacao", "rejeitado"] },
+        "approvedBy": { "type": "string" },
+        "approvedByName": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["type", "productId", "productName", "quantity", "userId", "userName", "timestamp", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "User status and profile change audit records",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "targetUserId": { "type": "string" },
+        "targetUserName": { "type": "string" },
+        "performedBy": { "type": "string" },
+        "performedByName": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["action", "targetUserId", "performedBy", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Application users and authorization profiles"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Beverage catalog"
+    },
+    "/batches/{batchId}": {
+      "schema": { "$ref": "#/entities/Batch" },
+      "description": "Inventory batches and expiration dates"
+    },
+    "/movements/{movementId}": {
+      "schema": { "$ref": "#/entities/StockMovement" },
+      "description": "Stock movements, entries, exits and loss write-offs"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Administrative actions audit log"
+    }
+  }
+}

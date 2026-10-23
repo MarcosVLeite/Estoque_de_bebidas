@@ -1,0 +1,159 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // 0. BLOQUEIO GERAL PADRÃO (DEFAULT DENY)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // 1. FUNÇÕES AUXILIARES DE SEGURANÇA E IDENTIDADE (RBAC / ABAC)
+    // =========================================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Retorna os dados cadastrais do usuário autenticado no Firestore
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // REGRA DE OURO: Usuário só é aprovado se seu documento existir e status for 'aprovado'
+    // Usuários com status 'pendente', 'rejeitado' ou 'desativado' NÃO passam nesta checagem.
+    function isApproved() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().status == 'aprovado';
+    }
+
+    // Administrador: tem privilégio total (inclui e-mail de bootstrap)
+    function isAdmin() {
+      return (
+        isSignedIn() && (
+          request.auth.token.email == 'santosleitemv1@gmail.com' ||
+          request.auth.token.email == 'marcosleite@estoque.com'
+        )
+      ) || (isApproved() && getUserData().perfil == 'admin');
+    }
+
+    // Gerente: gerencia produtos, aprova perdas e ajustes de inventário
+    function isGerente() {
+      return isApproved() && (getUserData().perfil == 'gerente' || getUserData().perfil == 'admin');
+    }
+
+    // Estoquista / Operador: registra entradas, saídas, perdas e contagens
+    function canOperateStock() {
+      return isApproved() && (
+        getUserData().perfil == 'admin' ||
+        getUserData().perfil == 'gerente' ||
+        getUserData().perfil == 'estoquista'
+      );
+    }
+
+    // =========================================================================
+    // 2. COLEÇÃO: USERS (Gerenciamento de Contas e Perfis)
+    // =========================================================================
+    match /users/{userId} {
+      // Leitura individual: o próprio usuário (para saber seu status) ou administradores
+      allow get: if isOwner(userId) || isAdmin();
+
+      // Listagem geral de usuários: estritamente restrita a Administradores
+      allow list: if isAdmin();
+
+      // Criação de conta:
+      // Usuário comum só pode criar seu próprio documento com status 'pendente' e perfil nulo/vazio.
+      // O e-mail inicial do administrador tem permissão para auto-bootstrapping como 'aprovado'.
+      allow create: if isSignedIn() && request.auth.uid == userId && (
+        (
+          request.resource.data.status == 'pendente' &&
+          (request.resource.data.perfil == '' || request.resource.data.perfil == null)
+        ) ||
+        (
+          (request.auth.token.email == 'santosleitemv1@gmail.com' || request.auth.token.email == 'marcosleite@estoque.com') &&
+          request.resource.data.status == 'aprovado' &&
+          request.resource.data.perfil == 'admin'
+        )
+      );
+
+      // Atualização: apenas administradores podem aprovar, rejeitar, alterar perfil ou status
+      allow update: if isAdmin();
+
+      // Exclusão: apenas administradores
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 3. COLEÇÃO: PRODUCTS (Catálogo de Bebidas)
+    // =========================================================================
+    match /products/{productId} {
+      // Usuários restritos (pendentes/desativados/rejeitados) NÃO acessam
+      allow read: if isApproved();
+
+      // Cadastro, alteração e exclusão permitidos para Gerentes e Administradores
+      allow create, update, delete: if isGerente();
+    }
+
+    // =========================================================================
+    // 4. COLEÇÃO: BATCHES (Lotes e Controle de Validade FEFO)
+    // =========================================================================
+    match /batches/{batchId} {
+      // Leitura para qualquer usuário aprovado (inclusive perfil 'consulta')
+      allow read: if isApproved();
+
+      // Movimentação de lotes permitida para Estoquistas, Gerentes e Administradores
+      allow create, update, delete: if canOperateStock();
+    }
+
+    // =========================================================================
+    // 5. COLEÇÃO: MOVEMENTS (Entradas, Saídas, Perdas e Transferências)
+    // =========================================================================
+    match /movements/{movementId} {
+      // Visualização do histórico do estoque: apenas usuários aprovados
+      allow read: if isApproved();
+
+      // Registro de movimentações: Estoquistas, Gerentes e Administradores
+      allow create: if canOperateStock();
+
+      // Aprovação/rejeição de perdas e ajustes: Gerentes e Administradores
+      allow update: if isGerente();
+
+      // Exclusão de registros: apenas Administradores
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 6. COLEÇÃO: INVENTORIES (Contagens e Balanços de Estoque)
+    // =========================================================================
+    match /inventories/{inventoryId} {
+      allow read: if isApproved();
+      allow create, update: if canOperateStock();
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 7. COLEÇÃO: AUDIT LOGS (Trilha de Auditoria Imutável)
+    // =========================================================================
+    match /auditLogs/{logId} {
+      // Leitura exclusiva de administradores
+      allow read: if isAdmin();
+
+      // Criação permitida para administradores ou pelo sistema ao autenticar/operar
+      allow create: if isSignedIn();
+
+      // Registros de auditoria são estritamente IMUTÁVEIS (não podem ser alterados nem apagados)
+      allow update, delete: if false;
+    }
+  }
+}
